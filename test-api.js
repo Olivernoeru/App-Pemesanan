@@ -2,9 +2,9 @@ const API_URL = 'http://localhost:5000/api/auth';
 
 // Data palsu buat ngetes
 const dummyUser = {
-    name: "Admin Kopi Kenangan",
-    email: "admin@kopikenangan.test",
-    password: "password123",
+    name: "Admin Kopi Ilang Arah",
+    email: "admin@ilangarah.test",
+    password: "ilangarah123",
     role: "admin"
 };
 
