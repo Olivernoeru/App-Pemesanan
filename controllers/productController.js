@@ -1,120 +1,70 @@
-const db = require('../config/db');
+const db = require("../config/db");
+const fs = require("fs"); // Tambahin ini di paling atas! Buat hapus file
+const path = require("path");
 
 // ==========================================
 // 1. CREATE: Tambah Produk Baru (Admin)
 // ==========================================
 const createProduct = async (req, res) => {
-    try {
-        const { name, description, price } = req.body;
+  try {
+    const { name, description, price } = req.body;
 
-        if (!req.file) {
-            return res.status(400).json({ success: false, message: 'Gambar produk wajib di-upload!' });
-        }
-
-        const imageUrl = `/uploads/${req.file.filename}`;
-
-        const [result] = await db.promise().query(
-            'INSERT INTO products (name, description, price, image_url, status) VALUES (?, ?, ?, ?, ?)',
-            [name, description, price, imageUrl, 'active']
-        );
-
-        res.status(201).json({
-            success: true,
-            message: 'Menu Kopi berhasil ditambahkan!',
-            data: { id: result.insertId, name, description, price, image_url: imageUrl, status: 'active' }
+    // 1. Validasi Super Ketat
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Gambar produk wajib di-upload!" });
+    }
+    if (!name || !description || !price) {
+      // Hapus file yang terlanjur di-upload Multer karena data teksnya bolong
+      fs.unlinkSync(req.file.path);
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Semua field (Nama, Deskripsi, Harga) wajib diisi!",
         });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Gagal menambah produk.' });
     }
-};
 
-// ==========================================
-// 2. READ: Lihat Daftar Produk (Publik)
-// ==========================================
-const getAllProducts = async (req, res) => {
-    try {
-        // Hanya memanggil produk yang statusnya 'active'
-        const [products] = await db.promise().query("SELECT * FROM products WHERE status = 'active'");
-        res.status(200).json({ success: true, data: products });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Gagal mengambil data produk.' });
+    // 2. Paksa tipe data angka biar nggak jadi bug siluman
+    const numericPrice = Number(price);
+    if (isNaN(numericPrice)) {
+      fs.unlinkSync(req.file.path);
+      return res
+        .status(400)
+        .json({ success: false, message: "Harga harus berupa angka!" });
     }
-};
 
-const getProductById = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const [product] = await db.promise().query("SELECT * FROM products WHERE id = ? AND status = 'active'", [id]);
-        
-        if (product.length === 0) {
-            return res.status(404).json({ success: false, message: 'Menu tidak ditemukan atau sudah tidak aktif.' });
-        }
+    const imageUrl = `/uploads/${req.file.filename}`;
 
-        res.status(200).json({ success: true, data: product[0] });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Gagal mengambil data produk.' });
+    // 3. Eksekusi Database
+    const [result] = await db
+      .promise()
+      .query(
+        "INSERT INTO products (name, description, price, image_url, status) VALUES (?, ?, ?, ?, ?)",
+        [name, description, numericPrice, imageUrl, "active"],
+      );
+
+    res.status(201).json({
+      success: true,
+      message: "Menu Kopi berhasil ditambahkan!",
+      data: {
+        id: result.insertId,
+        name,
+        description,
+        price: numericPrice,
+        image_url: imageUrl,
+        status: "active",
+      },
+    });
+  } catch (error) {
+    console.error("Error di createProduct:", error);
+
+    // 4. JURUS ANTI SAMPAH: Hapus foto kalau query database gagal!
+    if (req.file && fs.existsSync(req.file.path)) {
+      fs.unlinkSync(req.file.path);
     }
+
+    res.status(500).json({ success: false, message: "Gagal menambah produk." });
+  }
 };
-
-// ==========================================
-// 3. UPDATE: Edit Produk (Admin)
-// ==========================================
-const updateProduct = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { name, description, price, status } = req.body;
-
-        // Cek apakah produknya ada di database
-        const [existing] = await db.promise().query('SELECT * FROM products WHERE id = ?', [id]);
-        if (existing.length === 0) {
-            return res.status(404).json({ success: false, message: 'Produk tidak ditemukan!' });
-        }
-
-        // Kalau Admin upload gambar baru, pakai gambar baru. Kalau nggak, pakai gambar lama.
-        const imageUrl = req.file ? `/uploads/${req.file.filename}` : existing[0].image_url;
-
-        await db.promise().query(
-            'UPDATE products SET name = ?, description = ?, price = ?, image_url = ?, status = ? WHERE id = ?',
-            [
-                name || existing[0].name, 
-                description || existing[0].description, 
-                price || existing[0].price, 
-                imageUrl, 
-                status || existing[0].status, 
-                id
-            ]
-        );
-
-        res.status(200).json({ success: true, message: 'Menu Kopi berhasil di-update!' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Gagal meng-update produk.' });
-    }
-};
-
-// ==========================================
-// 4. DELETE: Soft Delete Produk (Admin)
-// ==========================================
-const deleteProduct = async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const [existing] = await db.promise().query('SELECT * FROM products WHERE id = ?', [id]);
-        if (existing.length === 0) {
-            return res.status(404).json({ success: false, message: 'Produk tidak ditemukan!' });
-        }
-
-        // Mengubah status jadi 'hidden' bukan menghapus permanen (Soft Delete)
-        await db.promise().query("UPDATE products SET status = 'hidden' WHERE id = ?", [id]);
-
-        res.status(200).json({ success: true, message: 'Menu berhasil disembunyikan (Soft Delete)!' });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ success: false, message: 'Gagal menghapus produk.' });
-    }
-};
-
-module.exports = { createProduct, getAllProducts, getProductById, updateProduct, deleteProduct };

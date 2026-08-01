@@ -29,7 +29,7 @@ import {
 export default function AdminDashboard() {
   const router = useRouter();
 
-  // State Penangkal Hydration Error (Final Boss)
+  // State Penangkal Hydration Error
   const [isMounted, setIsMounted] = useState(false);
 
   const [adminEmail, setAdminEmail] = useState("");
@@ -50,49 +50,29 @@ export default function AdminDashboard() {
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
 
-  useEffect(() => {
-    // 1. Kasih tahu React kalau komponen udah aman mendarat di Browser
-    setIsMounted(true);
+  // ======================================================================
+  // FUNGSI-FUNGSI UTAMA (Di atas Early Return)
+  // ======================================================================
 
-    // 2. Lanjut proses cek Token
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      const userRole = payload.role ? payload.role.toLowerCase() : "";
-      if (userRole !== "admin") {
-        router.push("/");
-        return;
-      }
-      setAdminEmail(payload.email || "Admin");
-      fetchProducts();
-    } catch (error) {
-      localStorage.removeItem("token");
-      router.push("/login");
-    }
-  }, [router]);
-
-  // JURUS PAMUNGKAS: Selama belum mount di browser, render layar loading kosong!
-  if (!isMounted) {
-    return (
-      <div className="min-h-screen bg-[#F9F9F9] flex items-center justify-center">
-        <Loader2 className="animate-spin text-[#D4A373]" size={40} />
-      </div>
-    );
-  }
-
-  // Tarik Data Produk
+  // Tarik Data Produk (Versi Kebal Error)
   const fetchProducts = async () => {
     try {
       const res = await fetch("http://localhost:5000/api/products");
       if (!res.ok) throw new Error("Gagal mengambil data produk");
-      const data = await res.json();
-      setProducts(data);
+
+      const responseData = await res.json();
+
+      // LOGIKA KEBAL ERROR: Cek bentuk data dari backend
+      if (Array.isArray(responseData)) {
+        setProducts(responseData);
+      } else if (responseData && Array.isArray(responseData.data)) {
+        setProducts(responseData.data);
+      } else {
+        setProducts([]);
+      }
     } catch (error) {
       console.error("Error fetching products:", error);
+      setProducts([]);
     } finally {
       setIsLoadingProducts(false);
     }
@@ -153,6 +133,66 @@ export default function AdminDashboard() {
     return adminEmail.split("@")[0];
   };
 
+  // ======================================================================
+  // SATPAM PENJAGA TOKEN (USE EFFECT)
+  // ======================================================================
+  useEffect(() => {
+    setIsMounted(true);
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      // Algoritma Decode JWT
+      const base64Url = token.split(".")[1];
+      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+      const jsonPayload = decodeURIComponent(
+        atob(base64)
+          .split("")
+          .map(function (c) {
+            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
+          })
+          .join(""),
+      );
+
+      const payload = JSON.parse(jsonPayload);
+      const userRole = payload.role ? String(payload.role).toLowerCase() : "";
+
+      if (userRole !== "admin") {
+        console.error("Bukan admin! Role saat ini:", userRole);
+        router.push("/");
+        return;
+      }
+
+      // Lolos satpam!
+      setAdminEmail(payload.email || "Admin");
+
+      // Tarik data setelah lolos
+      fetchProducts();
+    } catch (error) {
+      console.error("Gagal Decode Token (Satpam nendang):", error);
+      localStorage.removeItem("token");
+      router.push("/login");
+    }
+  }, [router]);
+
+  // ======================================================================
+  // EARLY RETURN (HYDRATION FIX)
+  // ======================================================================
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-[#F9F9F9] flex items-center justify-center">
+        <Loader2 className="animate-spin text-[#D4A373]" size={40} />
+      </div>
+    );
+  }
+
+  // ======================================================================
+  // UI VARIABLES
+  // ======================================================================
   const menuItems = [
     { name: "Dashboard", icon: LayoutDashboard, active: true },
     { name: "Manajemen Produk", icon: Coffee, active: false },
@@ -163,7 +203,7 @@ export default function AdminDashboard() {
   const stats = [
     {
       title: "Total Produk",
-      value: products.length.toString(),
+      value: (Array.isArray(products) ? products.length : 0).toString(),
       description: "Katalog aktif saat ini",
       icon: Coffee,
     },
@@ -183,10 +223,10 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
-      {/* MODAL TAMBAH PRODUK */}
+      {/* MODAL TAMBAH PRODUK DENGAN UI NEUMORPHISM CRISP */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1A1A]/40 backdrop-blur-sm p-4">
-          <div className="w-full max-w-[500px] rounded-[32px] bg-[#F9F9F9] p-8 shadow-[12px_12px_24px_rgba(121,118,118,0.15),-12px_-12px_24px_rgba(255,255,255,1)] flex flex-col max-h-[90vh] overflow-y-auto hide-scrollbar">
+          <div className="w-full max-w-[500px] rounded-[32px] bg-[#F9F9F9] p-8 shadow-[6px_6px_16px_rgba(121,118,118,0.06),-6px_-6px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col max-h-[90vh] overflow-y-auto hide-scrollbar">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="font-montserrat text-xl font-bold text-[#1A1A1A]">
@@ -198,7 +238,7 @@ export default function AdminDashboard() {
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
-                className="h-10 w-10 flex items-center justify-center rounded-xl shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] text-[#797676] hover:text-red-500 active:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]"
+                className="h-10 w-10 flex items-center justify-center rounded-xl shadow-[2px_2px_6px_rgba(121,118,118,0.08),-2px_-2px_6px_rgba(255,255,255,0.9)] bg-[#F9F9F9] text-[#797676] hover:text-red-500 active:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)] transition-all"
               >
                 <X size={20} />
               </button>
@@ -211,7 +251,7 @@ export default function AdminDashboard() {
                 </label>
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full h-40 cursor-pointer rounded-2xl shadow-[inset_6px_6px_12px_rgba(121,118,118,0.12),inset_-6px_-6px_12px_rgba(255,255,255,1)] bg-[#F9F9F9] flex flex-col items-center justify-center overflow-hidden transition-all hover:bg-[#D4A373]/5"
+                  className="w-full h-40 cursor-pointer rounded-2xl shadow-[inset_3px_3px_8px_rgba(121,118,118,0.06),inset_-3px_-3px_8px_rgba(255,255,255,0.8)] border border-transparent hover:border-[#D4A373]/20 bg-[#F9F9F9] flex flex-col items-center justify-center overflow-hidden transition-all hover:bg-[#D4A373]/5"
                 >
                   {imagePreview ? (
                     <img
@@ -221,7 +261,7 @@ export default function AdminDashboard() {
                     />
                   ) : (
                     <>
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] text-[#D4A373] mb-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-[2px_2px_6px_rgba(121,118,118,0.08),-2px_-2px_6px_rgba(255,255,255,0.9)] bg-[#F9F9F9] text-[#D4A373] mb-3">
                         <Upload size={20} />
                       </div>
                       <p className="text-xs font-bold text-[#1A1A1A]">
@@ -254,7 +294,7 @@ export default function AdminDashboard() {
                     setFormData({ ...formData, name: e.target.value })
                   }
                   placeholder="Contoh: Kopi Kenangan Mantan"
-                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_4px_4px_8px_rgba(121,118,118,0.12),inset_-4px_-4px_8px_rgba(255,255,255,1)] p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373]"
+                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] transition-all"
                 />
               </div>
               <div>
@@ -269,7 +309,7 @@ export default function AdminDashboard() {
                     setFormData({ ...formData, price: e.target.value })
                   }
                   placeholder="Contoh: 18000"
-                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_4px_4px_8px_rgba(121,118,118,0.12),inset_-4px_-4px_8px_rgba(255,255,255,1)] p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373]"
+                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] transition-all"
                 />
               </div>
               <div>
@@ -284,13 +324,13 @@ export default function AdminDashboard() {
                     setFormData({ ...formData, description: e.target.value })
                   }
                   placeholder="Deskripsikan racikan kopi ini..."
-                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_4px_4px_8px_rgba(121,118,118,0.12),inset_-4px_-4px_8px_rgba(255,255,255,1)] p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] resize-none"
+                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] resize-none transition-all"
                 />
               </div>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#D4A373] py-4 text-sm font-bold text-[#F9F9F9] shadow-[6px_6px_16px_rgba(212,163,115,0.4),-6px_-6px_16px_rgba(255,255,255,1)] transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 disabled:pointer-events-none mt-2"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#D4A373] py-4 text-sm font-bold text-[#F9F9F9] shadow-[4px_4px_12px_rgba(212,163,115,0.3),-4px_-4px_12px_rgba(255,255,255,0.9)] transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 disabled:pointer-events-none mt-2"
               >
                 {isSubmitting ? (
                   <>
@@ -503,7 +543,7 @@ export default function AdminDashboard() {
                       Menarik data dari database...
                     </p>
                   </div>
-                ) : products.length === 0 ? (
+                ) : !Array.isArray(products) || products.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center min-h-[300px] rounded-[24px] shadow-[inset_8px_8px_16px_rgba(121,118,118,0.08),inset_-8px_-8px_16px_rgba(255,255,255,1)] bg-[#F9F9F9] p-8 text-center">
                     <div className="flex h-20 w-20 items-center justify-center rounded-full shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] mb-6 bg-[#F9F9F9]">
                       <Coffee size={32} className="text-[#D4A373]" />
@@ -537,60 +577,61 @@ export default function AdminDashboard() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[#797676]/10">
-                          {products.map((product) => (
-                            <tr
-                              key={product.id}
-                              className="transition-colors hover:bg-[#1A1A1A]/5"
-                            >
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-4">
-                                  <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-white">
-                                    <img
-                                      src={`http://localhost:5000${product.image_url}`}
-                                      alt={product.name}
-                                      className="h-full w-full object-cover"
-                                      onError={(e) => {
-                                        e.target.src =
-                                          "https://via.placeholder.com/150?text=No+Image";
-                                      }}
-                                    />
+                          {Array.isArray(products) &&
+                            products.map((product) => (
+                              <tr
+                                key={product.id}
+                                className="transition-colors hover:bg-[#1A1A1A]/5"
+                              >
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-4">
+                                    <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-white">
+                                      <img
+                                        src={`http://localhost:5000${product.image_url}`}
+                                        alt={product.name}
+                                        className="h-full w-full object-cover"
+                                        onError={(e) => {
+                                          e.target.src =
+                                            "https://via.placeholder.com/150?text=No+Image";
+                                        }}
+                                      />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-[#1A1A1A]">
+                                        {product.name}
+                                      </p>
+                                      <p className="text-[11px] font-medium text-[#797676] line-clamp-1 max-w-[150px]">
+                                        {product.description}
+                                      </p>
+                                    </div>
                                   </div>
-                                  <div>
-                                    <p className="text-sm font-bold text-[#1A1A1A]">
-                                      {product.name}
-                                    </p>
-                                    <p className="text-[11px] font-medium text-[#797676] line-clamp-1 max-w-[150px]">
-                                      {product.description}
-                                    </p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-sm font-bold text-[#D4A373]">
+                                    Rp{" "}
+                                    {Number(product.price).toLocaleString(
+                                      "id-ID",
+                                    )}
+                                  </p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
+                                    Aktif
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 text-center">
+                                  <div className="flex justify-center gap-2">
+                                    <button className="p-2 text-[#797676] hover:text-[#D4A373] transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
+                                      <Edit size={16} />
+                                    </button>
+                                    <button className="p-2 text-[#797676] hover:text-red-500 transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
+                                      <Trash2 size={16} />
+                                    </button>
                                   </div>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <p className="text-sm font-bold text-[#D4A373]">
-                                  Rp{" "}
-                                  {Number(product.price).toLocaleString(
-                                    "id-ID",
-                                  )}
-                                </p>
-                              </td>
-                              <td className="px-6 py-4">
-                                <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                                  Aktif
-                                </span>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                <div className="flex justify-center gap-2">
-                                  <button className="p-2 text-[#797676] hover:text-[#D4A373] transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
-                                    <Edit size={16} />
-                                  </button>
-                                  <button className="p-2 text-[#797676] hover:text-red-500 transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
+                                </td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
