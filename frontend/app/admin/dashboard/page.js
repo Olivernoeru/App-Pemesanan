@@ -41,11 +41,14 @@ export default function AdminDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // OPERASI CAESAR 1: Tambah 'category' ke state form
   const [formData, setFormData] = useState({
     name: "",
     price: "",
     description: "",
+    category: "Coffee", // Default kategori
   });
+
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
@@ -54,7 +57,6 @@ export default function AdminDashboard() {
   // FUNGSI-FUNGSI UTAMA (Di atas Early Return)
   // ======================================================================
 
-  // Tarik Data Produk (Versi Kebal Error)
   const fetchProducts = async () => {
     try {
       const res = await fetch("http://localhost:5000/api/products");
@@ -62,7 +64,6 @@ export default function AdminDashboard() {
 
       const responseData = await res.json();
 
-      // LOGIKA KEBAL ERROR: Cek bentuk data dari backend
       if (Array.isArray(responseData)) {
         setProducts(responseData);
       } else if (responseData && Array.isArray(responseData.data)) {
@@ -78,7 +79,6 @@ export default function AdminDashboard() {
     }
   };
 
-  // Tambah Produk Baru dengan Gambar (Multer)
   const handleAddProduct = async (e) => {
     e.preventDefault();
     if (!imageFile) return alert("Wajib upload foto kopi lu bro!");
@@ -90,6 +90,8 @@ export default function AdminDashboard() {
     submitData.append("name", formData.name);
     submitData.append("price", formData.price);
     submitData.append("description", formData.description);
+    // OPERASI CAESAR 2: Suntik kategori ke Form Data yang dikirim ke backend
+    submitData.append("category", formData.category);
     submitData.append("image", imageFile);
 
     try {
@@ -102,11 +104,12 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Gagal menambahkan produk");
 
       setIsModalOpen(false);
-      setFormData({ name: "", price: "", description: "" });
+      // OPERASI CAESAR 3: Reset kategori ke default setelah berhasil submit
+      setFormData({ name: "", price: "", description: "", category: "Coffee" });
       setImageFile(null);
       setImagePreview(null);
 
-      fetchProducts(); // Refresh Tabel
+      fetchProducts();
     } catch (error) {
       console.error("Error:", error);
       alert("Gagal menyimpan data!");
@@ -133,9 +136,6 @@ export default function AdminDashboard() {
     return adminEmail.split("@")[0];
   };
 
-  // ======================================================================
-  // SATPAM PENJAGA TOKEN (USE EFFECT)
-  // ======================================================================
   useEffect(() => {
     setIsMounted(true);
     const token = localStorage.getItem("token");
@@ -146,7 +146,6 @@ export default function AdminDashboard() {
     }
 
     try {
-      // Algoritma Decode JWT
       const base64Url = token.split(".")[1];
       const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
       const jsonPayload = decodeURIComponent(
@@ -167,10 +166,7 @@ export default function AdminDashboard() {
         return;
       }
 
-      // Lolos satpam!
       setAdminEmail(payload.email || "Admin");
-
-      // Tarik data setelah lolos
       fetchProducts();
     } catch (error) {
       console.error("Gagal Decode Token (Satpam nendang):", error);
@@ -179,9 +175,6 @@ export default function AdminDashboard() {
     }
   }, [router]);
 
-  // ======================================================================
-  // EARLY RETURN (HYDRATION FIX)
-  // ======================================================================
   if (!isMounted) {
     return (
       <div className="min-h-screen bg-[#F9F9F9] flex items-center justify-center">
@@ -190,9 +183,6 @@ export default function AdminDashboard() {
     );
   }
 
-  // ======================================================================
-  // UI VARIABLES
-  // ======================================================================
   const menuItems = [
     { name: "Dashboard", icon: LayoutDashboard, active: true },
     { name: "Manajemen Produk", icon: Coffee, active: false },
@@ -223,14 +213,13 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
-      {/* MODAL TAMBAH PRODUK DENGAN UI NEUMORPHISM CRISP */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1A1A]/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-[500px] rounded-[32px] bg-[#F9F9F9] p-8 shadow-[6px_6px_16px_rgba(121,118,118,0.06),-6px_-6px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col max-h-[90vh] overflow-y-auto hide-scrollbar">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="font-montserrat text-xl font-bold text-[#1A1A1A]">
-                  Tambah Menu Kopi
+                  Tambah Menu
                 </h2>
                 <p className="text-xs font-medium text-[#797676] mt-1">
                   Masukkan detail dan foto katalog baru
@@ -297,21 +286,45 @@ export default function AdminDashboard() {
                   className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] transition-all"
                 />
               </div>
-              <div>
-                <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
-                  Harga (Rp)
-                </label>
-                <input
-                  type="number"
-                  required
-                  value={formData.price}
-                  onChange={(e) =>
-                    setFormData({ ...formData, price: e.target.value })
-                  }
-                  placeholder="Contoh: 18000"
-                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] transition-all"
-                />
+
+              {/* OPERASI CAESAR 4: UI Dropdown Kategori (Disamakan dengan style neumorphism lu) */}
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                    Kategori
+                  </label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) =>
+                      setFormData({ ...formData, category: e.target.value })
+                    }
+                    className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none transition-all cursor-pointer"
+                  >
+                    <option value="Coffee">Coffee</option>
+                    <option value="Non Coffee">Non Coffee</option>
+                    <option value="Arah Series">Arah Series</option>
+                    <option value="Arah Toast">Arah Toast</option>
+                    <option value="Food">Food</option>
+                  </select>
+                </div>
+
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                    Harga (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.price}
+                    onChange={(e) =>
+                      setFormData({ ...formData, price: e.target.value })
+                    }
+                    placeholder="Contoh: 18000"
+                    className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] transition-all"
+                  />
+                </div>
               </div>
+
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
                   Deskripsi
@@ -323,7 +336,7 @@ export default function AdminDashboard() {
                   onChange={(e) =>
                     setFormData({ ...formData, description: e.target.value })
                   }
-                  placeholder="Deskripsikan racikan kopi ini..."
+                  placeholder="Deskripsikan racikan menu ini..."
                   className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/50 focus:text-[#D4A373] resize-none transition-all"
                 />
               </div>
@@ -352,7 +365,6 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-[#F9F9F9] shadow-[8px_0_24px_rgba(121,118,118,0.06)] px-6 py-8 transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
@@ -432,7 +444,6 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="flex h-[100px] shrink-0 items-center justify-between px-8 lg:px-12 bg-[#F9F9F9] z-10">
           <div className="flex items-center gap-4">
@@ -549,7 +560,7 @@ export default function AdminDashboard() {
                       <Coffee size={32} className="text-[#D4A373]" />
                     </div>
                     <h4 className="font-montserrat text-base font-bold text-[#1A1A1A]">
-                      Belum Ada Menu Kopi
+                      Belum Ada Menu
                     </h4>
                     <p className="mt-3 text-xs font-medium text-[#797676] max-w-sm leading-relaxed">
                       Katalog lu masih kosong. Klik tombol "Tambah Menu" di atas
@@ -564,6 +575,10 @@ export default function AdminDashboard() {
                           <tr className="border-b border-[#797676]/10">
                             <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-[#797676]">
                               Produk
+                            </th>
+                            {/* OPERASI CAESAR 5: Tambah Header Tabel Kategori */}
+                            <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-[#797676]">
+                              Kategori
                             </th>
                             <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-[#797676]">
                               Harga
@@ -606,6 +621,14 @@ export default function AdminDashboard() {
                                     </div>
                                   </div>
                                 </td>
+
+                                {/* OPERASI CAESAR 6: Tampilkan Badge Kategori di Tabel */}
+                                <td className="px-6 py-4">
+                                  <span className="inline-flex items-center rounded-full bg-[#F9F9F9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[#D4A373] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.08),inset_-2px_-2px_4px_rgba(255,255,255,1)] border border-white/50">
+                                    {product.category || "Coffee"}
+                                  </span>
+                                </td>
+
                                 <td className="px-6 py-4">
                                   <p className="text-sm font-bold text-[#D4A373]">
                                     Rp{" "}

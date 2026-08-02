@@ -1,42 +1,50 @@
-const multer = require('multer');
-const path = require('path');
+const multer = require("multer");
+const path = require("path");
 
-// 1. Setup Storage: Mau disimpen di mana dan namanya apa?
+// 1. Setting tempat penyimpanan dan penamaan file
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        // Arahin ke folder public/uploads yang udah lu bikin sebelumnya
-        cb(null, 'public/uploads');
-    },
-    filename: function (req, file, cb) {
-        // Bikin nama file unik: timestamp + angka random + ekstensi asli 
-        // (Contoh hasil: 1708999999-123456789.jpg)
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
+  destination: function (req, file, cb) {
+    cb(null, "public/uploads/"); // Masuk ke folder yang udah lu buat
+  },
+  filename: function (req, file, cb) {
+    // Bikin nama unik: kopi-123456789.jpg (Biar kalau nama file aslinya aneh, server tetep aman)
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(
+      null,
+      "kopi-" + uniqueSuffix + path.extname(file.originalname).toLowerCase(),
+    );
+  },
 });
 
-// 2. Setup Filter: Cuma boleh terima file gambar
+// 2. Filter Format File (Lebih santai tapi tetap aman)
 const fileFilter = (req, file, cb) => {
-    // Regex tipe file yang diizinkan
-    const allowedTypes = /jpeg|jpg|png/;
-    
-    // Cek ekstensi file
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-    // Cek mimetype
-    const mimetype = allowedTypes.test(file.mimetype);
+  // List format yang diizinkan (mimetype)
+  const allowedMimeTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+  ];
 
-    if (extname && mimetype) {
-        return cb(null, true);
-    } else {
-        cb(new Error('Format file ditolak! Cuma boleh upload gambar (JPG/JPEG/PNG).'), false);
-    }
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    // Format aman, silakan masuk!
+    cb(null, true);
+  } else {
+    // Format aneh, tendang!
+    cb(
+      new Error(
+        "Format file ditolak! Cuma boleh upload gambar (JPG/PNG/WEBP).",
+      ),
+      false,
+    );
+  }
 };
 
-// 3. Eksekusi Multer dengan limitasi ukuran maksimal 5MB
+// 3. Bungkus semua aturan ke dalam variabel 'upload'
 const upload = multer({
-    storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB (Bisa disesuaikan nanti)
-    fileFilter: fileFilter
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 }, // Batas maksimal 5MB
 });
 
 module.exports = upload;
