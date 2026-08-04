@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import NotificationDropdown from "@/components/NotificationDropdown";
 import {
   LayoutDashboard,
   Coffee,
@@ -9,7 +10,6 @@ import {
   Users,
   Settings,
   LogOut,
-  Bell,
   Search,
   Menu,
   X,
@@ -41,7 +41,7 @@ export default function AdminDashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // OPERASI CAESAR 1: Tambah 'category' ke state form
+  // State form ditambahkan 'category'
   const [formData, setFormData] = useState({
     name: "",
     price: "",
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
   const fileInputRef = useRef(null);
 
   // ======================================================================
-  // FUNGSI-FUNGSI UTAMA (Di atas Early Return)
+  // FUNGSI-FUNGSI UTAMA
   // ======================================================================
 
   const fetchProducts = async () => {
@@ -90,7 +90,6 @@ export default function AdminDashboard() {
     submitData.append("name", formData.name);
     submitData.append("price", formData.price);
     submitData.append("description", formData.description);
-    // OPERASI CAESAR 2: Suntik kategori ke Form Data yang dikirim ke backend
     submitData.append("category", formData.category);
     submitData.append("image", imageFile);
 
@@ -104,7 +103,6 @@ export default function AdminDashboard() {
       if (!res.ok) throw new Error("Gagal menambahkan produk");
 
       setIsModalOpen(false);
-      // OPERASI CAESAR 3: Reset kategori ke default setelah berhasil submit
       setFormData({ name: "", price: "", description: "", category: "Coffee" });
       setImageFile(null);
       setImagePreview(null);
@@ -185,7 +183,7 @@ export default function AdminDashboard() {
 
   const menuItems = [
     { name: "Dashboard", icon: LayoutDashboard, active: true },
-    { name: "Manajemen Produk", icon: Coffee, active: false },
+    { name: "Manajemen Produk", icon: Coffee, active: true },
     { name: "Pesanan", icon: ShoppingBag, active: false, badge: "Segera" },
     { name: "Pelanggan", icon: Users, active: false, badge: "Segera" },
   ];
@@ -213,6 +211,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
+      {/* MODAL TAMBAH PRODUK */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1A1A]/40 backdrop-blur-sm p-4">
           <div className="w-full max-w-[500px] rounded-[32px] bg-[#F9F9F9] p-8 shadow-[6px_6px_16px_rgba(121,118,118,0.06),-6px_-6px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col max-h-[90vh] overflow-y-auto hide-scrollbar">
@@ -287,7 +286,6 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {/* OPERASI CAESAR 4: UI Dropdown Kategori (Disamakan dengan style neumorphism lu) */}
               <div className="flex gap-4">
                 <div className="flex-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
@@ -358,6 +356,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* SIDEBAR MOBILE OVERLAY */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
@@ -365,6 +364,7 @@ export default function AdminDashboard() {
         />
       )}
 
+      {/* SIDEBAR */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-[#F9F9F9] shadow-[8px_0_24px_rgba(121,118,118,0.06)] px-6 py-8 transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
@@ -444,6 +444,7 @@ export default function AdminDashboard() {
         </div>
       </aside>
 
+      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="flex h-[100px] shrink-0 items-center justify-between px-8 lg:px-12 bg-[#F9F9F9] z-10">
           <div className="flex items-center gap-4">
@@ -466,15 +467,15 @@ export default function AdminDashboard() {
                 className="w-full bg-transparent text-sm font-medium text-[#1A1A1A] outline-none placeholder:text-[#797676]/60"
               />
             </div>
-            <button className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F9F9F9] shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] text-[#797676] hover:text-[#D4A373] transition-all active:shadow-[inset_4px_4px_8px_rgba(121,118,118,0.1),inset_-4px_-4px_8px_rgba(255,255,255,1)]">
-              <Bell size={20} />
-              <span className="absolute right-3.5 top-3.5 h-2 w-2 rounded-full bg-[#D4A373]" />
-            </button>
+
+            {/* KOMPONEN NOTIFIKASI MODULAR DARI components/NotificationDropdown.js */}
+            <NotificationDropdown />
           </div>
         </header>
 
         <div className="flex-1 overflow-auto px-8 pb-12 lg:px-12 pt-2">
           <div className="mx-auto max-w-[1400px]">
+            {/* HERO SECTION */}
             <section className="mb-14 flex flex-col md:flex-row justify-between gap-8 md:items-end">
               <div>
                 <h1 className="font-montserrat text-3xl font-black text-[#1A1A1A] sm:text-4xl">
@@ -494,6 +495,7 @@ export default function AdminDashboard() {
               </button>
             </section>
 
+            {/* STATS SECTION */}
             <section className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
               {stats.map((stat) => (
                 <div
@@ -525,8 +527,13 @@ export default function AdminDashboard() {
               ))}
             </section>
 
+            {/* TABEL & AKSI CEPAT SECTION */}
             <section className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
-              <div className="rounded-[32px] bg-[#F9F9F9] p-8 shadow-[10px_10px_20px_rgba(121,118,118,0.08),-10px_-10px_20px_rgba(255,255,255,1)] flex flex-col">
+              {/* TARGET SCROLL */}
+              <div
+                id="katalog-tabel"
+                className="rounded-[32px] bg-[#F9F9F9] p-8 shadow-[10px_10px_20px_rgba(121,118,118,0.08),-10px_-10px_20px_rgba(255,255,255,1)] flex flex-col"
+              >
                 <div className="flex items-center justify-between mb-8">
                   <div>
                     <h3 className="font-montserrat text-lg font-bold text-[#1A1A1A]">
@@ -576,7 +583,6 @@ export default function AdminDashboard() {
                             <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-[#797676]">
                               Produk
                             </th>
-                            {/* OPERASI CAESAR 5: Tambah Header Tabel Kategori */}
                             <th className="px-6 py-5 text-[10px] font-bold uppercase tracking-widest text-[#797676]">
                               Kategori
                             </th>
@@ -622,7 +628,6 @@ export default function AdminDashboard() {
                                   </div>
                                 </td>
 
-                                {/* OPERASI CAESAR 6: Tampilkan Badge Kategori di Tabel */}
                                 <td className="px-6 py-4">
                                   <span className="inline-flex items-center rounded-full bg-[#F9F9F9] px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-[#D4A373] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.08),inset_-2px_-2px_4px_rgba(255,255,255,1)] border border-white/50">
                                     {product.category || "Coffee"}
@@ -715,7 +720,14 @@ export default function AdminDashboard() {
                       />
                     </div>
 
-                    <div className="cursor-pointer flex w-full items-center justify-between rounded-2xl p-4 shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] active:shadow-[inset_4px_4px_8px_rgba(121,118,118,0.1),inset_-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] transition-all group">
+                    <div
+                      onClick={() =>
+                        document
+                          .getElementById("katalog-tabel")
+                          ?.scrollIntoView({ behavior: "smooth" })
+                      }
+                      className="cursor-pointer flex w-full items-center justify-between rounded-2xl p-4 shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] active:shadow-[inset_4px_4px_8px_rgba(121,118,118,0.1),inset_-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] transition-all group"
+                    >
                       <div className="flex items-center gap-4">
                         <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-[inset_3px_3px_6px_rgba(121,118,118,0.12),inset_-3px_-3px_6px_rgba(255,255,255,1)] bg-[#F9F9F9] text-[#1A1A1A] group-hover:scale-105 transition-transform">
                           <ArrowUpRight size={20} />

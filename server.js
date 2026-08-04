@@ -9,6 +9,7 @@ require('./config/db');
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes'); // Import route produk lu
+const notificationRoutes = require('./routes/notificationRoutes');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -23,7 +24,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
 // Gunakan Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes); // Daftarin route produk
-
+app.use('/api/notifications', notificationRoutes); // Daftarin route notifikasi
 // Route Dasar untuk Test
 app.get('/', (req, res) => {
   res.send('API Project FNB is running!');
