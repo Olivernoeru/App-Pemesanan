@@ -12,13 +12,13 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: "Kopi Kenangan - Login",
-  description: "Aplikasi Pemesanan FNB Skala Besar",
+  title: "Ilang Arah Coffee - Pemesanan",
+  description: "Aplikasi Pemesanan FNB Skala Besar - Katalog Menu Ilang Arah Coffee & Eatery",
 };
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="id">
+    <html lang="id" suppressHydrationWarning>
       {/* Tambahkan suppressHydrationWarning di sini biar kebal dari Extension Browser */}
       <body suppressHydrationWarning className={`${montserrat.variable} ${inter.variable} antialiased`}>
         {children}

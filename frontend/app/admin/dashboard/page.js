@@ -1,14 +1,16 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import { API_ENDPOINTS, authFetch, getImageUrl, API_BASE_URL } from "@/lib/api";
 import {
   LayoutDashboard,
   Coffee,
   ShoppingBag,
   Users,
-  Settings,
+  ReceiptText,
   LogOut,
   Search,
   Menu,
@@ -19,55 +21,67 @@ import {
   Activity,
   CircleCheck,
   Clock3,
-  MoreHorizontal,
   Edit,
   Trash2,
   Loader2,
   Upload,
+  ExternalLink,
 } from "lucide-react";
 
 export default function AdminDashboard() {
   const router = useRouter();
 
-  // State Penangkal Hydration Error
   const [isMounted, setIsMounted] = useState(false);
-
   const [adminEmail, setAdminEmail] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [products, setProducts] = useState([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [ordersToday, setOrdersToday] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [pendingOrders, setPendingOrders] = useState(0);
 
+  // State Modal Tambah
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // State form ditambahkan 'category'
   const [formData, setFormData] = useState({
     name: "",
     price: "",
     description: "",
-    category: "Coffee", // Default kategori
+    category: "Coffee",
   });
-
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
 
-  // ======================================================================
-  // FUNGSI-FUNGSI UTAMA
-  // ======================================================================
+  // State Modal Edit
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editFormData, setEditFormData] = useState({
+    name: "",
+    price: "",
+    description: "",
+    category: "Coffee",
+  });
+  const [editImageFile, setEditImageFile] = useState(null);
+  const [editImagePreview, setEditImagePreview] = useState(null);
+  const editFileInputRef = useRef(null);
 
+  // ==========================================
+  // FETCH PRODUK
+  // ==========================================
   const fetchProducts = async () => {
+    setIsLoadingProducts(true);
     try {
-      const res = await fetch("http://localhost:5000/api/products");
+      const res = await authFetch(`${API_ENDPOINTS.PRODUCTS}?limit=100`);
       if (!res.ok) throw new Error("Gagal mengambil data produk");
 
       const responseData = await res.json();
 
-      if (Array.isArray(responseData)) {
-        setProducts(responseData);
-      } else if (responseData && Array.isArray(responseData.data)) {
+      if (responseData && Array.isArray(responseData.data)) {
         setProducts(responseData.data);
+      } else if (Array.isArray(responseData)) {
+        setProducts(responseData);
       } else {
         setProducts([]);
       }
@@ -79,12 +93,40 @@ export default function AdminDashboard() {
     }
   };
 
+  // ==========================================
+  // FETCH PESANAN
+  // ==========================================
+  const fetchOrders = async () => {
+    try {
+      const res = await authFetch(API_ENDPOINTS.ORDERS);
+      if (!res.ok) throw new Error("Gagal mengambil data pesanan");
+
+      const json = await res.json();
+      const orders = json.data || [];
+
+      setTotalOrders(orders.length);
+      setPendingOrders(orders.filter((o) => o.status === "Menunggu").length);
+
+      const today = new Date().toISOString().slice(0, 10);
+      setOrdersToday(
+        orders.filter((o) => {
+          const d = new Date(o.created_at).toISOString().slice(0, 10);
+          return d === today;
+        }).length,
+      );
+    } catch (error) {
+      console.error("Error fetching orders:", error);
+    }
+  };
+
+  // ==========================================
+  // HANDLER TAMBAH PRODUK
+  // ==========================================
   const handleAddProduct = async (e) => {
     e.preventDefault();
-    if (!imageFile) return alert("Wajib upload foto kopi lu bro!");
+    if (!imageFile) return alert("Wajib upload foto produk!");
 
     setIsSubmitting(true);
-    const token = localStorage.getItem("token");
 
     const submitData = new FormData();
     submitData.append("name", formData.name);
@@ -94,13 +136,15 @@ export default function AdminDashboard() {
     submitData.append("image", imageFile);
 
     try {
-      const res = await fetch("http://localhost:5000/api/products", {
+      const res = await authFetch(API_ENDPOINTS.PRODUCTS, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: submitData,
       });
 
-      if (!res.ok) throw new Error("Gagal menambahkan produk");
+      const result = await res.json();
+      if (!res.ok || !result.success) {
+        throw new Error(result.message || "Gagal menambahkan produk");
+      }
 
       setIsModalOpen(false);
       setFormData({ name: "", price: "", description: "", category: "Coffee" });
@@ -110,7 +154,7 @@ export default function AdminDashboard() {
       fetchProducts();
     } catch (error) {
       console.error("Error:", error);
-      alert("Gagal menyimpan data!");
+      alert(error.message || "Gagal menyimpan data!");
     } finally {
       setIsSubmitting(false);
     }
@@ -124,9 +168,94 @@ export default function AdminDashboard() {
     }
   };
 
+  // ==========================================
+  // HANDLER EDIT PRODUK
+  // ==========================================
+  const openEditModal = (product) => {
+    setEditId(product.id);
+    setEditFormData({
+      name: product.name,
+      price: product.price,
+      description: product.description,
+      category: product.category || "Coffee",
+    });
+    setEditImagePreview(`${API_BASE_URL}${product.image_url}`);
+    setEditImageFile(null);
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setEditImageFile(file);
+      setEditImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const handleUpdateProduct = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    const token = localStorage.getItem("token");
+
+    const submitData = new FormData();
+    submitData.append("name", editFormData.name);
+    submitData.append("price", editFormData.price);
+    submitData.append("description", editFormData.description);
+    submitData.append("category", editFormData.category);
+    if (editImageFile) {
+      submitData.append("image", editImageFile);
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${editId}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${token}` },
+        body: submitData,
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        setIsEditModalOpen(false);
+        fetchProducts();
+      } else {
+        alert(result.message);
+      }
+    } catch (error) {
+      console.error("Gagal update produk:", error);
+      alert("Terjadi kesalahan sistem saat menyimpan.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // ==========================================
+  // HANDLER HAPUS PRODUK (SOFT DELETE)
+  // ==========================================
+  const handleDeleteProduct = async (id, name) => {
+    if (!confirm(`Yakin ingin menyembunyikan/menghapus "${name}"?`)) return;
+
+    const token = localStorage.getItem("token");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/products/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        fetchProducts();
+      } else {
+        alert(result.message || "Gagal menghapus produk");
+      }
+    } catch (error) {
+      console.error("Error delete product:", error);
+      alert("Terjadi kesalahan saat menghapus.");
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
-    router.push("/login");
+    router.push("/admin/login");
   };
 
   const getAdminName = () => {
@@ -135,43 +264,18 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    setIsMounted(true);
-    const token = localStorage.getItem("token");
-
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-
-    try {
-      const base64Url = token.split(".")[1];
-      const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-      const jsonPayload = decodeURIComponent(
-        atob(base64)
-          .split("")
-          .map(function (c) {
-            return "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2);
-          })
-          .join(""),
-      );
-
-      const payload = JSON.parse(jsonPayload);
-      const userRole = payload.role ? String(payload.role).toLowerCase() : "";
-
-      if (userRole !== "admin") {
-        console.error("Bukan admin! Role saat ini:", userRole);
-        router.push("/");
-        return;
-      }
-
-      setAdminEmail(payload.email || "Admin");
+    const timer = setTimeout(() => {
+      setIsMounted(true);
+      fetch(`${API_BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      })
+        .then((response) => response.json())
+        .then((data) => setAdminEmail(data.user?.email || "Admin"));
       fetchProducts();
-    } catch (error) {
-      console.error("Gagal Decode Token (Satpam nendang):", error);
-      localStorage.removeItem("token");
-      router.push("/login");
-    }
-  }, [router]);
+      fetchOrders();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   if (!isMounted) {
     return (
@@ -182,10 +286,36 @@ export default function AdminDashboard() {
   }
 
   const menuItems = [
-    { name: "Dashboard", icon: LayoutDashboard, active: true },
-    { name: "Manajemen Produk", icon: Coffee, active: true },
-    { name: "Pesanan", icon: ShoppingBag, active: false, badge: "Segera" },
-    { name: "Pelanggan", icon: Users, active: false, badge: "Segera" },
+    {
+      name: "Dashboard",
+      icon: LayoutDashboard,
+      path: "/admin/dashboard",
+      active: true,
+    },
+    {
+      name: "Kasir / POS",
+      icon: ReceiptText,
+      path: "/pos",
+      active: false,
+    },
+    {
+      name: "Manajemen Produk",
+      icon: Coffee,
+      path: "/admin/products",
+      active: false,
+    },
+    {
+      name: "Pesanan",
+      icon: ShoppingBag,
+      path: "/admin/orders",
+      active: false,
+    },
+    {
+      name: "Pelanggan",
+      icon: Users,
+      path: "/admin/customers",
+      active: false,
+    },
   ];
 
   const stats = [
@@ -197,20 +327,20 @@ export default function AdminDashboard() {
     },
     {
       title: "Pesanan Hari Ini",
-      value: "0",
-      description: "Menunggu integrasi",
+      value: ordersToday.toString(),
+      description: `${pendingOrders} menunggu diproses`,
       icon: ShoppingBag,
     },
     {
-      title: "Pelanggan",
-      value: "0",
-      description: "Data belum tersedia",
+      title: "Total Pesanan",
+      value: totalOrders.toString(),
+      description: "Semua transaksi tercatat",
       icon: Users,
     },
   ];
 
   return (
-    <div className="min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
+    <div className="admin-theme app-surface min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
       {/* MODAL TAMBAH PRODUK */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1A1A]/40 backdrop-blur-sm p-4">
@@ -242,6 +372,7 @@ export default function AdminDashboard() {
                   className="w-full h-40 cursor-pointer rounded-2xl shadow-[inset_3px_3px_8px_rgba(121,118,118,0.06),inset_-3px_-3px_8px_rgba(255,255,255,0.8)] border border-transparent hover:border-[#D4A373]/20 bg-[#F9F9F9] flex flex-col items-center justify-center overflow-hidden transition-all hover:bg-[#D4A373]/5"
                 >
                   {imagePreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- preview berasal dari blob/data URL file lokal.
                     <img
                       src={imagePreview}
                       alt="Preview"
@@ -356,6 +487,157 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* MODAL EDIT PRODUK */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#1A1A1A]/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-[500px] rounded-[32px] bg-[#F9F9F9] p-8 shadow-[6px_6px_16px_rgba(121,118,118,0.06),-6px_-6px_16px_rgba(255,255,255,0.8)] border border-white/60 flex flex-col max-h-[90vh] overflow-y-auto hide-scrollbar">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="font-montserrat text-xl font-bold text-[#1A1A1A]">
+                  Edit Menu
+                </h2>
+                <p className="text-xs font-medium text-[#797676] mt-1">
+                  Ubah informasi produk ini
+                </p>
+              </div>
+              <button
+                onClick={() => setIsEditModalOpen(false)}
+                className="h-10 w-10 flex items-center justify-center rounded-xl shadow-[2px_2px_6px_rgba(121,118,118,0.08),-2px_-2px_6px_rgba(255,255,255,0.9)] bg-[#F9F9F9] text-[#797676] hover:text-red-500 active:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)] transition-all"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateProduct} className="space-y-5">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                  Foto Saat Ini / Baru
+                </label>
+                <div
+                  onClick={() => editFileInputRef.current?.click()}
+                  className="w-full h-40 cursor-pointer rounded-2xl shadow-[inset_3px_3px_8px_rgba(121,118,118,0.06),inset_-3px_-3px_8px_rgba(255,255,255,0.8)] border border-transparent hover:border-[#D4A373]/20 bg-[#F9F9F9] flex flex-col items-center justify-center overflow-hidden transition-all group"
+                >
+                  {editImagePreview ? (
+                    <div className="relative w-full h-full">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- preview berasal dari blob/data URL file lokal. */}
+                      <img
+                        src={editImagePreview}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-white text-xs font-bold flex items-center gap-2">
+                          <Upload size={16} /> Ganti Foto
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full shadow-[2px_2px_6px_rgba(121,118,118,0.08),-2px_-2px_6px_rgba(255,255,255,0.9)] bg-[#F9F9F9] text-[#D4A373] mb-3">
+                      <Upload size={20} />
+                    </div>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  ref={editFileInputRef}
+                  onChange={handleEditImageChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                  Nama Menu
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editFormData.name}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, name: e.target.value })
+                  }
+                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none transition-all"
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                    Kategori
+                  </label>
+                  <select
+                    value={editFormData.category}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        category: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none transition-all cursor-pointer"
+                  >
+                    <option value="Coffee">Coffee</option>
+                    <option value="Non Coffee">Non Coffee</option>
+                    <option value="Arah Series">Arah Series</option>
+                    <option value="Arah Toast">Arah Toast</option>
+                    <option value="Food">Food</option>
+                  </select>
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                    Harga (Rp)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editFormData.price}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        price: e.target.value,
+                      })
+                    }
+                    className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest text-[#797676] ml-2 mb-2 block">
+                  Deskripsi
+                </label>
+                <textarea
+                  required
+                  rows="3"
+                  value={editFormData.description}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      description: e.target.value,
+                    })
+                  }
+                  className="w-full rounded-2xl bg-[#F9F9F9] shadow-[inset_2px_2px_6px_rgba(121,118,118,0.06),inset_-2px_-2px_6px_rgba(255,255,255,0.8)] border border-transparent focus:border-[#D4A373]/30 p-4 text-sm font-medium text-[#1A1A1A] outline-none resize-none transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#D4A373] py-4 text-sm font-bold text-[#F9F9F9] shadow-[4px_4px_12px_rgba(212,163,115,0.3),-4px_-4px_12px_rgba(255,255,255,0.9)] transition-all hover:scale-[1.02] active:scale-95 disabled:opacity-70 disabled:pointer-events-none mt-2"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" /> Menyimpan...
+                  </>
+                ) : (
+                  "Simpan Perubahan"
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* SIDEBAR MOBILE OVERLAY */}
       {sidebarOpen && (
         <div
@@ -400,6 +682,11 @@ export default function AdminDashboard() {
               return (
                 <div
                   key={item.name}
+                  onClick={() => {
+                    if (item.path && item.path !== "#") {
+                      router.push(item.path);
+                    }
+                  }}
                   className={`cursor-pointer flex w-full items-center justify-between rounded-2xl px-5 py-4 text-left transition-all duration-300 ${item.active ? "bg-[#F9F9F9] shadow-[inset_6px_6px_12px_rgba(121,118,118,0.12),inset_-6px_-6px_12px_rgba(255,255,255,1)] text-[#D4A373]" : "bg-[#F9F9F9] text-[#797676] hover:shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] hover:text-[#1A1A1A]"}`}
                 >
                   <div className="flex items-center gap-4">
@@ -468,7 +755,6 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* KOMPONEN NOTIFIKASI MODULAR DARI components/NotificationDropdown.js */}
             <NotificationDropdown />
           </div>
         </header>
@@ -487,12 +773,22 @@ export default function AdminDashboard() {
                   melalui satu panel kendali minimalis.
                 </p>
               </div>
-              <button
-                onClick={() => setIsModalOpen(true)}
-                className="flex items-center justify-center gap-3 rounded-2xl bg-[#F9F9F9] px-8 py-4 text-sm font-bold text-[#D4A373] shadow-[8px_8px_16px_rgba(121,118,118,0.1),-8px_-8px_16px_rgba(255,255,255,1)] transition-all active:shadow-[inset_6px_6px_12px_rgba(121,118,118,0.1),inset_-6px_-6px_12px_rgba(255,255,255,1)] hover:scale-105"
-              >
-                <Plus size={20} strokeWidth={2.5} /> Tambah Menu
-              </button>
+              <div className="flex gap-4">
+                <a
+                  href="/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 rounded-2xl bg-[#F9F9F9] px-6 py-4 text-sm font-bold text-[#797676] shadow-[8px_8px_16px_rgba(121,118,118,0.1),-8px_-8px_16px_rgba(255,255,255,1)] transition-all active:shadow-[inset_6px_6px_12px_rgba(121,118,118,0.1),inset_-6px_-6px_12px_rgba(255,255,255,1)] hover:text-[#1A1A1A]"
+                >
+                  <ExternalLink size={18} /> Lihat Website Customer
+                </a>
+                <button
+                  onClick={() => setIsModalOpen(true)}
+                  className="flex items-center justify-center gap-3 rounded-2xl bg-[#F9F9F9] px-8 py-4 text-sm font-bold text-[#D4A373] shadow-[8px_8px_16px_rgba(121,118,118,0.1),-8px_-8px_16px_rgba(255,255,255,1)] transition-all active:shadow-[inset_6px_6px_12px_rgba(121,118,118,0.1),inset_-6px_-6px_12px_rgba(255,255,255,1)] hover:scale-105"
+                >
+                  <Plus size={20} strokeWidth={2.5} /> Tambah Menu
+                </button>
+              </div>
             </section>
 
             {/* STATS SECTION */}
@@ -529,7 +825,6 @@ export default function AdminDashboard() {
 
             {/* TABEL & AKSI CEPAT SECTION */}
             <section className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-8">
-              {/* TARGET SCROLL */}
               <div
                 id="katalog-tabel"
                 className="rounded-[32px] bg-[#F9F9F9] p-8 shadow-[10px_10px_20px_rgba(121,118,118,0.08),-10px_-10px_20px_rgba(255,255,255,1)] flex flex-col"
@@ -570,7 +865,7 @@ export default function AdminDashboard() {
                       Belum Ada Menu
                     </h4>
                     <p className="mt-3 text-xs font-medium text-[#797676] max-w-sm leading-relaxed">
-                      Katalog lu masih kosong. Klik tombol "Tambah Menu" di atas
+                      Katalog lu masih kosong. Klik tombol &quot;Tambah Menu&quot; di atas
                       untuk mulai memasukkan foto, nama, dan harga produk.
                     </p>
                   </div>
@@ -606,16 +901,8 @@ export default function AdminDashboard() {
                               >
                                 <td className="px-6 py-4">
                                   <div className="flex items-center gap-4">
-                                    <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-white">
-                                      <img
-                                        src={`http://localhost:5000${product.image_url}`}
-                                        alt={product.name}
-                                        className="h-full w-full object-cover"
-                                        onError={(e) => {
-                                          e.target.src =
-                                            "https://via.placeholder.com/150?text=No+Image";
-                                        }}
-                                      />
+                                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-white shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)]">
+                                      <Image src={`${API_BASE_URL}${product.image_url}`} alt={product.name} fill sizes="48px" className="object-cover" />
                                     </div>
                                     <div>
                                       <p className="text-sm font-bold text-[#1A1A1A]">
@@ -643,17 +930,36 @@ export default function AdminDashboard() {
                                   </p>
                                 </td>
                                 <td className="px-6 py-4">
-                                  <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
-                                    <span className="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-                                    Aktif
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-[#1A1A1A] shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]`}
+                                  >
+                                    <span
+                                      className={`h-1.5 w-1.5 rounded-full ${product.availability_status === "sold_out" ? "bg-red-500" : "bg-green-500"}`}
+                                    ></span>
+                                    {product.availability_status === "sold_out"
+                                      ? "Habis"
+                                      : "Tersedia"}
                                   </span>
                                 </td>
                                 <td className="px-6 py-4 text-center">
                                   <div className="flex justify-center gap-2">
-                                    <button className="p-2 text-[#797676] hover:text-[#D4A373] transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
+                                    <button
+                                      onClick={() => openEditModal(product)}
+                                      className="p-2 text-[#797676] hover:text-[#D4A373] transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]"
+                                      title="Edit Menu"
+                                    >
                                       <Edit size={16} />
                                     </button>
-                                    <button className="p-2 text-[#797676] hover:text-red-500 transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]">
+                                    <button
+                                      onClick={() =>
+                                        handleDeleteProduct(
+                                          product.id,
+                                          product.name,
+                                        )
+                                      }
+                                      className="p-2 text-[#797676] hover:text-red-500 transition-colors rounded-lg hover:shadow-[inset_2px_2px_4px_rgba(121,118,118,0.1),inset_-2px_-2px_4px_rgba(255,255,255,1)]"
+                                      title="Hapus Menu"
+                                    >
                                       <Trash2 size={16} />
                                     </button>
                                   </div>
@@ -683,8 +989,8 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                   <p className="mt-6 text-xs font-medium text-[#797676] leading-relaxed">
-                    Form modal terhubung sempurna dengan Multer dan API POST.
-                    Sistem kebal dari Hydration Error.
+                    Sistem terintegrasi dengan REST API. Anda dapat mengelola
+                    menu dari Dashboard maupun Manajemen Produk.
                   </p>
                 </div>
 
@@ -698,19 +1004,19 @@ export default function AdminDashboard() {
 
                   <div className="space-y-5">
                     <div
-                      onClick={() => setIsModalOpen(true)}
+                      onClick={() => router.push("/admin/orders")}
                       className="cursor-pointer flex w-full items-center justify-between rounded-2xl p-4 shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] active:shadow-[inset_4px_4px_8px_rgba(121,118,118,0.1),inset_-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] transition-all group"
                     >
                       <div className="flex items-center gap-4">
                         <div className="flex h-12 w-12 items-center justify-center rounded-xl shadow-[inset_3px_3px_6px_rgba(121,118,118,0.12),inset_-3px_-3px_6px_rgba(255,255,255,1)] bg-[#F9F9F9] text-[#D4A373] group-hover:scale-105 transition-transform">
-                          <Plus size={20} />
+                          <ShoppingBag size={20} />
                         </div>
                         <div className="text-left">
                           <p className="text-sm font-bold text-[#1A1A1A]">
-                            Katalog Baru
+                            Lihat Pesanan
                           </p>
                           <p className="mt-1 text-[10px] font-medium text-[#797676]">
-                            Tambah menu kopi
+                            Kelola pesanan masuk
                           </p>
                         </div>
                       </div>
@@ -721,11 +1027,7 @@ export default function AdminDashboard() {
                     </div>
 
                     <div
-                      onClick={() =>
-                        document
-                          .getElementById("katalog-tabel")
-                          ?.scrollIntoView({ behavior: "smooth" })
-                      }
+                      onClick={() => router.push("/admin/products")}
                       className="cursor-pointer flex w-full items-center justify-between rounded-2xl p-4 shadow-[6px_6px_12px_rgba(121,118,118,0.1),-6px_-6px_12px_rgba(255,255,255,1)] active:shadow-[inset_4px_4px_8px_rgba(121,118,118,0.1),inset_-4px_-4px_8px_rgba(255,255,255,1)] bg-[#F9F9F9] transition-all group"
                     >
                       <div className="flex items-center gap-4">
@@ -737,7 +1039,7 @@ export default function AdminDashboard() {
                             Lihat Daftar
                           </p>
                           <p className="mt-1 text-[10px] font-medium text-[#797676]">
-                            Database menu aktif
+                            Ke Manajemen Produk
                           </p>
                         </div>
                       </div>

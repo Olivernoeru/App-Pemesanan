@@ -1,0 +1,12 @@
+const express = require('express');
+const router = express.Router();
+const c = require('../controllers/customizationController');
+const { verifyToken, verifyAdmin } = require('../middlewares/authMiddleware');
+router.get('/products/:id', c.getProductCustomization);
+router.put('/products/:id', verifyToken, verifyAdmin, c.saveProductCustomization);
+router.get('/addons', verifyToken, verifyAdmin, c.getAddons);
+router.get('/addon-categories', verifyToken, verifyAdmin, c.getAddonCategories);
+router.post('/addon-categories', verifyToken, verifyAdmin, c.createAddonCategory);
+router.post('/addons', verifyToken, verifyAdmin, c.createAddon);
+router.patch('/addons/:id', verifyToken, verifyAdmin, c.toggleAddon);
+module.exports = router;

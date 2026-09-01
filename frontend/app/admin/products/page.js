@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import Image from "next/image";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import NotificationDropdown from "@/components/NotificationDropdown";
+import { API_BASE_URL } from "@/lib/api";
 import {
   LayoutDashboard,
   Coffee,
@@ -67,20 +69,23 @@ export default function ProductManagement() {
   // ==========================================
   // FETCH DATA DARI BACKEND
   // ==========================================
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setIsLoading(true);
     try {
-      const url = new URL("http://localhost:5000/api/products");
+      const token = localStorage.getItem("token");
+      const url = new URL(`${API_BASE_URL}/api/products`);
       url.searchParams.append("page", currentPage);
       url.searchParams.append("limit", 10);
       if (searchQuery) url.searchParams.append("search", searchQuery);
       if (filterCategory !== "Semua Kategori")
         url.searchParams.append("category", filterCategory);
-      if (filterStatus !== "Semua Status")
-        url.searchParams.append("status", filterStatus);
+      // Selalu kirim status agar backend bisa deteksi admin (Semua Status = tampilkan semua)
+      url.searchParams.append("status", filterStatus);
       url.searchParams.append("sort", sortBy);
 
-      const res = await fetch(url.toString());
+      const res = await fetch(url.toString(), {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const result = await res.json();
 
       if (result.success) {
@@ -92,12 +97,14 @@ export default function ProductManagement() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [currentPage, filterCategory, filterStatus, searchQuery, sortBy]);
 
   // Trigger Fetching setiap kali filter/page berubah
   useEffect(() => {
-    if (isMounted) fetchProducts();
-  }, [currentPage, filterCategory, filterStatus, sortBy]);
+    if (!isMounted) return;
+    const fetchTimer = setTimeout(() => fetchProducts(), 0);
+    return () => clearTimeout(fetchTimer);
+  }, [fetchProducts, isMounted]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -116,7 +123,7 @@ export default function ProductManagement() {
       description: product.description,
       category: product.category || "Coffee",
     });
-    setEditImagePreview(`http://localhost:5000${product.image_url}`);
+    setEditImagePreview(`${API_BASE_URL}${product.image_url}`);
     setEditImageFile(null); // Reset file baru
     setIsEditModalOpen(true);
   };
@@ -145,7 +152,7 @@ export default function ProductManagement() {
     }
 
     try {
-      const res = await fetch(`http://localhost:5000/api/products/${editId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/products/${editId}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${token}` },
         body: submitData,
@@ -174,7 +181,7 @@ export default function ProductManagement() {
     const token = localStorage.getItem("token");
     try {
       const res = await fetch(
-        `http://localhost:5000/api/products/${id}/availability`,
+        `${API_BASE_URL}/api/products/${id}/availability`,
         {
           method: "PATCH",
           headers: {
@@ -198,7 +205,7 @@ export default function ProductManagement() {
     const token = localStorage.getItem("token");
     try {
       const res = await fetch(
-        `http://localhost:5000/api/products/${id}/visibility`,
+        `${API_BASE_URL}/api/products/${id}/visibility`,
         {
           method: "PATCH",
           headers: {
@@ -219,24 +226,18 @@ export default function ProductManagement() {
   // ==========================================
   const handleLogout = () => {
     localStorage.removeItem("token");
-    router.push("/login");
+    router.push("/admin/login");
   };
 
   useEffect(() => {
-    setIsMounted(true);
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
-    }
-    try {
-      const payload = JSON.parse(atob(token.split(".")[1]));
-      if (payload.role?.toLowerCase() !== "admin") router.push("/");
-      else setAdminEmail(payload.email || "Admin");
-    } catch (error) {
-      router.push("/login");
-    }
-  }, [router]);
+    const timer = setTimeout(() => {
+      setIsMounted(true);
+      fetch(`${API_BASE_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${localStorage.getItem("token")}` } })
+        .then((response) => response.json())
+        .then((data) => setAdminEmail(data.user?.email || "Admin"));
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   if (!isMounted)
     return (
@@ -261,21 +262,19 @@ export default function ProductManagement() {
     {
       name: "Pesanan",
       icon: ShoppingBag,
-      path: "#",
+      path: "/admin/orders",
       active: false,
-      badge: "Segera",
     },
     {
       name: "Pelanggan",
       icon: Users,
-      path: "#",
+      path: "/admin/customers",
       active: false,
-      badge: "Segera",
     },
   ];
 
   return (
-    <div className="min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
+    <div className="admin-theme app-surface min-h-screen bg-[#F9F9F9] font-inter text-[#1A1A1A] flex overflow-hidden">
       {/* SIDEBAR */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-[280px] flex-col bg-[#F9F9F9] shadow-[8px_0_24px_rgba(121,118,118,0.06)] px-6 py-8 transition-transform duration-300 ease-in-out lg:static lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
@@ -464,11 +463,13 @@ export default function ProductManagement() {
                           >
                             <td className="px-6 py-4">
                               <div className="flex items-center gap-4">
-                                <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-white">
-                                  <img
-                                    src={`http://localhost:5000${product.image_url}`}
+                                <div className="h-12 w-12 shrink-0 rounded-xl overflow-hidden shadow-[4px_4px_8px_rgba(121,118,118,0.1),-4px_-4px_8px_rgba(255,255,255,1)] bg-white relative">
+                                  <Image
+                                    src={`${API_BASE_URL}${product.image_url}`}
                                     alt={product.name}
-                                    className={`h-full w-full object-cover ${product.availability_status === "sold_out" ? "grayscale" : ""}`}
+                                    fill
+                                    sizes="48px"
+                                    className={`object-cover ${product.availability_status === "sold_out" ? "grayscale" : ""}`}
                                   />
                                 </div>
                                 <div>
@@ -508,12 +509,11 @@ export default function ProductManagement() {
                                     product.availability_status,
                                   )
                                 }
-                                disabled={product.is_active === 0}
                                 className={`flex items-center justify-center gap-2 mx-auto px-4 py-2 rounded-xl transition-all font-bold text-xs ${
                                   product.availability_status === "available"
                                     ? "text-green-600 shadow-[inset_2px_2px_5px_rgba(34,197,94,0.15),inset_-2px_-2px_5px_rgba(255,255,255,1)] bg-green-50/50"
                                     : "text-red-500 shadow-[inset_2px_2px_5px_rgba(239,68,68,0.15),inset_-2px_-2px_5px_rgba(255,255,255,1)] bg-red-50/50"
-                                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                }`}
                               >
                                 {product.availability_status === "available" ? (
                                   <ToggleRight size={18} />
@@ -639,6 +639,7 @@ export default function ProductManagement() {
                 >
                   {editImagePreview ? (
                     <div className="relative w-full h-full">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- preview berasal dari blob/data URL file lokal. */}
                       <img
                         src={editImagePreview}
                         alt="Preview"

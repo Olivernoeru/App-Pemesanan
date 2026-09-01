@@ -12,13 +12,14 @@ const {
   toggleVisibility,
 } = require("../controllers/productController");
 
-const { verifyToken, verifyAdmin } = require("../middlewares/authMiddleware");
+const { verifyToken, verifyAdmin, optionalToken } = require("../middlewares/authMiddleware");
 const upload = require("../middlewares/uploadMiddleware");
 
 // ----------------------------------------------------
 // ROUTE PUBLIK (Bisa diakses User & Guest tanpa Token)
+// optionalToken: jika admin kirim token maka isAdmin = true (bisa lihat semua produk)
 // ----------------------------------------------------
-router.get("/", getAllProducts); // Lihat semua menu aktif/filtered
+router.get("/", optionalToken, getAllProducts);  // Semi-publik: admin bisa lihat produk nonaktif
 router.get("/:id", getProductById); // Lihat detail satu menu
 
 // ----------------------------------------------------
@@ -29,6 +30,7 @@ router.post(
   verifyToken,
   verifyAdmin,
   upload.single("image"),
+  upload.validateImage,
   createProduct,
 );
 router.put(
@@ -36,6 +38,7 @@ router.put(
   verifyToken,
   verifyAdmin,
   upload.single("image"),
+  upload.validateImage,
   updateProduct,
 );
 router.delete("/:id", verifyToken, verifyAdmin, deleteProduct);
@@ -45,3 +48,4 @@ router.patch("/:id/availability", verifyToken, verifyAdmin, toggleAvailability);
 router.patch("/:id/visibility", verifyToken, verifyAdmin, toggleVisibility);
 
 module.exports = router;
+

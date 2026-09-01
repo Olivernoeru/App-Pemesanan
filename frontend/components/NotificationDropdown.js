@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Bell, Check, Info, ShoppingBag } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { API_BASE_URL, API_ENDPOINTS, authFetch } from "@/lib/api";
 
 export default function NotificationDropdown() {
   const router = useRouter();
@@ -14,11 +15,11 @@ export default function NotificationDropdown() {
   // Fungsi Narik Data dari Backend
   const fetchNotifications = async () => {
     try {
-      const res = await fetch("http://localhost:5000/api/notifications");
+      const res = await authFetch(API_ENDPOINTS.NOTIFICATIONS);
       const data = await res.json();
       if (data.success) setNotifications(data.data);
 
-      const resCount = await fetch("http://localhost:5000/api/notifications/unread-count");
+      const resCount = await authFetch(API_ENDPOINTS.NOTIFICATIONS_UNREAD_COUNT);
       const dataCount = await resCount.json();
       if (dataCount.success) setUnreadCount(dataCount.count);
     } catch (error) {
@@ -29,9 +30,12 @@ export default function NotificationDropdown() {
   // 1. Tarik data saat pertama loading
   // 2. Set interval polling setiap 15 detik (Auto-refresh)
   useEffect(() => {
-    fetchNotifications();
+    const timer = setTimeout(() => fetchNotifications(), 0);
     const interval = setInterval(fetchNotifications, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, []);
 
   // Menutup dropdown kalau klik di luar kotak
@@ -48,7 +52,7 @@ export default function NotificationDropdown() {
   // Aksi pas satu notifikasi diklik
   const handleReadSingle = async (id, orderId) => {
     try {
-      await fetch(`http://localhost:5000/api/notifications/${id}/read`, { method: "PATCH" });
+      await authFetch(API_ENDPOINTS.NOTIFICATION_READ(id), { method: "PATCH" });
       fetchNotifications();
       setIsOpen(false);
       
@@ -65,7 +69,7 @@ export default function NotificationDropdown() {
   // Aksi tombol "Tandai Semua Dibaca"
   const handleReadAll = async () => {
     try {
-      await fetch("http://localhost:5000/api/notifications/read-all", { method: "PATCH" });
+      await authFetch(API_ENDPOINTS.NOTIFICATIONS_READ_ALL, { method: "PATCH" });
       fetchNotifications();
     } catch (error) {
       console.error("Gagal read all", error);

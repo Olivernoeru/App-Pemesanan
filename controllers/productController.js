@@ -9,13 +9,20 @@ const createProduct = async (req, res) => {
   try {
     const { name, description, price, category } = req.body;
 
-    // 1. Validasi Super Ketat
     if (!req.file) {
       return res
         .status(400)
         .json({ success: false, message: "Gambar produk wajib di-upload!" });
     }
-    if (!name || !description || !price) {
+    if (!name || typeof name !== 'string' || name.trim().length < 2 || name.trim().length > 100) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ success: false, message: "Nama produk tidak valid (2-100 karakter)." });
+    }
+    if (!description || typeof description !== 'string' || description.trim().length > 1000) {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ success: false, message: "Deskripsi tidak valid." });
+    }
+    if (!price) {
       fs.unlinkSync(req.file.path);
       return res
         .status(400)
@@ -25,24 +32,23 @@ const createProduct = async (req, res) => {
         });
     }
 
-    // 2. Paksa tipe data angka biar nggak jadi bug siluman
     const numericPrice = Number(price);
-    if (isNaN(numericPrice)) {
+    if (isNaN(numericPrice) || numericPrice < 0 || numericPrice > 100000000) {
       fs.unlinkSync(req.file.path);
       return res
         .status(400)
         .json({ success: false, message: "Harga harus berupa angka!" });
     }
 
-    const productCategory = category || "Coffee";
+    const allowedCategories = ['Coffee', 'Non Coffee', 'Arah Series', 'Arah Toast', 'Food'];
+    const productCategory = allowedCategories.includes(category) ? category : "Coffee";
     const imageUrl = `/uploads/${req.file.filename}`;
 
-    // 3. Eksekusi Database (Suntik is_active = 1 dan availability_status = 'available')
     const [result] = await db
       .promise()
       .query(
         "INSERT INTO products (name, description, price, category, image_url, availability_status, is_active) VALUES (?, ?, ?, ?, ?, 'available', 1)",
-        [name, description, numericPrice, productCategory, imageUrl],
+        [name.trim(), description.trim(), numericPrice, productCategory, imageUrl],
       );
 
     res.status(201).json({
@@ -50,8 +56,8 @@ const createProduct = async (req, res) => {
       message: "Menu Kopi berhasil ditambahkan!",
       data: {
         id: result.insertId,
-        name,
-        description,
+        name: name.trim(),
+        description: description.trim(),
         price: numericPrice,
         category: productCategory,
         image_url: imageUrl,
@@ -64,6 +70,7 @@ const createProduct = async (req, res) => {
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     res.status(500).json({ success: false, message: "Gagal menambah produk." });
   }
+
 };
 
 // ==========================================
@@ -71,87 +78,62 @@ const createProduct = async (req, res) => {
 // ==========================================
 const getAllProducts = async (req, res) => {
   try {
-    // Tangkap parameter dari Frontend (dengan nilai default agar Dashboard lama tetap aman)
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 100; // Limit besar untuk dashboard ringkasan
+    const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 100));
+    const offset = (page - 1) * limit;
     const search = req.query.search || "";
     const category = req.query.category || "";
     const statusFilter = req.query.status || "";
     const sort = req.query.sort || "newest";
+    const isAdmin = req.user && req.user.role === 'admin';
 
     let whereClauses = [];
     let params = [];
 
-    // Filter Nama (Smart Search)
     if (search) {
       whereClauses.push("name LIKE ?");
       params.push(`%${search}%`);
     }
 
-    // Filter Kategori
     if (category && category !== "Semua Kategori") {
       whereClauses.push("category = ?");
       params.push(category);
     }
 
-    // Filter Status Ketersediaan & Visibilitas
     if (statusFilter === "Tersedia") {
       whereClauses.push("availability_status = 'available' AND is_active = 1");
     } else if (statusFilter === "Habis") {
       whereClauses.push("availability_status = 'sold_out' AND is_active = 1");
     } else if (statusFilter === "Disembunyikan") {
+      // Hanya admin yang boleh melihat produk yang disembunyikan
+      if (!isAdmin) {
+        return res.status(200).json({ success: true, data: [], pagination: { current_page: 1, total_pages: 0, total_items: 0, limit } });
+      }
       whereClauses.push("is_active = 0");
     } else if (statusFilter === "Semua Status") {
-      // Bebas hambatan, tampilkan semua
+      // Admin: lihat semua (aktif & nonaktif). Guest/User: hanya aktif
+      if (!isAdmin) whereClauses.push("is_active = 1");
     } else {
-      // Default Behavior (Untuk Dashboard Publik & Ringkasan Admin): Hanya tampilkan yang aktif
-      whereClauses.push("is_active = 1");
+      // Tidak ada filter status atau tidak dikenal → admin lihat semua, guest hanya aktif
+      if (!isAdmin) whereClauses.push("is_active = 1");
     }
 
-    // Rakit Kondisi WHERE
-    const whereQuery =
-      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
-
-    // Rakit Kondisi ORDER BY (Sorting)
-    let orderQuery = "ORDER BY id DESC"; // Default: Terbaru
+    const whereQuery = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
+    let orderQuery = "ORDER BY id DESC";
     if (sort === "name_asc") orderQuery = "ORDER BY name ASC";
     if (sort === "name_desc") orderQuery = "ORDER BY name DESC";
     if (sort === "price_asc") orderQuery = "ORDER BY price ASC";
     if (sort === "price_desc") orderQuery = "ORDER BY price DESC";
 
-    // Hitung Total Data (Wajib Untuk Pagination)
-    const [countResult] = await db
-      .promise()
-      .query(`SELECT COUNT(*) as total FROM products ${whereQuery}`, params);
+    const [countResult] = await db.promise().query(`SELECT COUNT(*) as total FROM products ${whereQuery}`, params);
     const totalItems = countResult[0].total;
-    const totalPages = Math.ceil(totalItems / limit);
-
-    // Ambil Data Sesuai Halaman (OFFSET & LIMIT)
-    const offset = (page - 1) * limit;
-    const [products] = await db
-      .promise()
-      .query(
-        `SELECT * FROM products ${whereQuery} ${orderQuery} LIMIT ? OFFSET ?`,
-        [...params, limit, offset],
-      );
-
-    // Return Data + Info Pagination
-    res.status(200).json({
-      success: true,
-      data: products,
-      pagination: {
-        current_page: page,
-        total_pages: totalPages,
-        total_items: totalItems,
-        limit: limit,
-      },
-    });
+    const [products] = await db.promise().query(`SELECT * FROM products ${whereQuery} ${orderQuery} LIMIT ? OFFSET ?`, [...params, limit, offset]);
+    return res.status(200).json({ success: true, data: products, pagination: { current_page: page, total_pages: Math.ceil(totalItems / limit), total_items: totalItems, limit } });
   } catch (error) {
     console.error("Error di getAllProducts:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Gagal mengambil data produk." });
+    return res.status(500).json({ success: false, message: "Gagal mengambil data produk." });
   }
+
 };
 
 const getProductById = async (req, res) => {
@@ -168,16 +150,18 @@ const getProductById = async (req, res) => {
     }
     res.status(200).json({ success: true, data: product[0] });
   } catch (error) {
-    console.error(error);
+    console.error("Error di getProductById:", error);
+    console.error("ERROR DETAIL:", error);
     res
       .status(500)
-      .json({ success: false, message: "Gagal mengambil data produk." });
+      .json({ success: false, message: "Gagal mengambil data produk.", error: error.message });
   }
 };
 
 // ==========================================
 // 3. UPDATE: Edit Produk (Info Dasar)
 // ==========================================
+
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
@@ -230,11 +214,13 @@ const updateProduct = async (req, res) => {
       .json({ success: true, message: "Menu Kopi berhasil di-update!" });
   } catch (error) {
     console.error("Error di updateProduct:", error);
+    console.error("ERROR DETAIL:", error);
     if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
     res
       .status(500)
-      .json({ success: false, message: "Gagal meng-update produk." });
+      .json({ success: false, message: "Gagal meng-update produk.", error: error.message });
   }
+
 };
 
 // ==========================================
@@ -263,59 +249,53 @@ const deleteProduct = async (req, res) => {
         message: "Menu berhasil disembunyikan (Soft Delete)!",
       });
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Gagal menghapus produk." });
+    console.error("Error di deleteProduct:", error);
+    res.status(500).json({ success: false, message: "Gagal menghapus produk." });
   }
 };
+
 
 // ==========================================
 // 5. PATCH: Toggle Ketersediaan & Restore
 // ==========================================
-const toggleAvailability = async (req, res) => {
+const toggleAvailability = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { availability_status } = req.body; // 'available' atau 'sold_out'
+    const { availability_status } = req.body;
+    if (!['available', 'sold_out'].includes(availability_status)) {
+      return res.status(400).json({ success: false, message: "availability_status harus 'available' atau 'sold_out'." });
+    }
+    const [check] = await db.promise().query("SELECT id FROM products WHERE id = ?", [id]);
+    if (!check.length) return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
 
-    await db
-      .promise()
-      .query("UPDATE products SET availability_status = ? WHERE id = ?", [
-        availability_status,
-        id,
-      ]);
-    res
-      .status(200)
-      .json({ success: true, message: `Status menu berhasil diubah!` });
+    await db.promise().query("UPDATE products SET availability_status = ? WHERE id = ?", [availability_status, id]);
+    return res.status(200).json({ success: true, message: "Status ketersediaan berhasil diubah." });
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Gagal mengubah status ketersediaan." });
+    console.error("Error di toggleAvailability:", error);
+    return res.status(500).json({ success: false, message: "Gagal mengubah status ketersediaan." });
   }
 };
 
-const toggleVisibility = async (req, res) => {
+
+const toggleVisibility = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { is_active } = req.body; // 1 (tampil) atau 0 (sembunyi)
+    const rawActive = req.body.is_active;
+    const is_active = Number(rawActive);
+    if (is_active !== 0 && is_active !== 1) {
+      return res.status(400).json({ success: false, message: "is_active harus 0 atau 1." });
+    }
+    const [check] = await db.promise().query("SELECT id FROM products WHERE id = ?", [id]);
+    if (!check.length) return res.status(404).json({ success: false, message: "Produk tidak ditemukan." });
 
-    await db
-      .promise()
-      .query("UPDATE products SET is_active = ? WHERE id = ?", [is_active, id]);
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: is_active === 1 ? "Menu dipulihkan!" : "Menu disembunyikan!",
-      });
+    await db.promise().query("UPDATE products SET is_active = ? WHERE id = ?", [is_active, id]);
+    return res.status(200).json({ success: true, message: is_active === 1 ? "Menu dipulihkan." : "Menu disembunyikan." });
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ success: false, message: "Gagal mengubah visibilitas." });
+    console.error("Error di toggleVisibility:", error);
+    return res.status(500).json({ success: false, message: "Gagal mengubah visibilitas." });
   }
 };
+
 
 module.exports = {
   createProduct,

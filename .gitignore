@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Environment
+.env
+.env.local
+
+# Build output
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Upload runtime (gambar produk disimpan di storage eksternal untuk production)
+public/uploads/*.jpg
+public/uploads/*.jpeg
+public/uploads/*.png
+public/uploads/*.webp
+temp_uploads/
+
+# Test artifacts
+dummy.jpg
+product-test*.log
+
+# Build/artifacts result
+build-result.txt
+build-validation.txt
+lint-result*.txt
+lint-validation.txt
+task_progress.md
+
+# Database and sensitive config (jangan pernah commit ini)
+

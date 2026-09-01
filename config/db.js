@@ -1,26 +1,24 @@
 const mysql = require('mysql2');
 require('dotenv').config(); // Memastikan file .env bisa terbaca
 
-// Setup Koneksi Database (Menggunakan Connection Pool biar lebih stabil untuk skala besar)
 const db = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0
+    connectionLimit: Number(process.env.DB_CONNECTION_LIMIT || 10),
+    queueLimit: Number(process.env.DB_QUEUE_LIMIT || 50),
+    connectTimeout: Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000),
+    enableKeepAlive: true,
+    keepAliveInitialDelay: 0
 });
 
-// Test Koneksi Database
-db.getConnection((err, connection) => {
-    if (err) {
-        console.error('Gagal koneksi ke database dari db.js:', err.message);
-    } else {
-        console.log('Database FNB berhasil terkoneksi via config/db.js!');
-        connection.release();
-    }
-});
+async function checkDatabase() {
+    await db.promise().query('SELECT 1');
+    return true;
+}
 
 // Export db supaya bisa dipanggil di controller atau file lain
 module.exports = db;
+module.exports.checkDatabase = checkDatabase;
