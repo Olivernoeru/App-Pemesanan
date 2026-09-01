@@ -9,7 +9,7 @@ async function test() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email: 'admin@ilangarah.test',
-      password: 'ilangarah123'
+     password: process.env.TEST_PASSWORD
     })
   });
   const loginData = await loginRes.json();

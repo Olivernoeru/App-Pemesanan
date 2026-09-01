@@ -21,7 +21,7 @@ function req(method, path, token, body) {
 }
 
 (async () => {
-  const login = await req('POST', '/api/auth/login', null, { email: 'admin@ilangarah.test', password: 'ilangarah123' });
+  const login = await req('POST', '/api/auth/login', null, { email: 'admin@ilangarah.test', password: 'process.env.TEST_PASSWORD' });
   if (!login.body.success) { console.log('LOGIN FAIL', login.body); return; }
   const token = login.body.token;
   console.log('LOGIN OK, token length:', token.length);

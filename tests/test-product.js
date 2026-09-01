@@ -27,7 +27,7 @@ async function runProductTest() {
         const resLogin = await fetchWithTimeout(`${API_AUTH}/login`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: "admin@ilangarah.test", password: "ilangarah123" })
+            body: JSON.stringify({ email: "admin@ilangarah.test", password: "process.env.TEST_PASSWORD" })
         });
         const dataLogin = await resLogin.json();
         if (!resLogin.ok) throw new Error(`Login HTTP ${resLogin.status}: ${dataLogin.message || 'gagal'}`);

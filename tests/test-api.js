@@ -4,7 +4,7 @@ const API_URL = 'http://localhost:5000/api/auth';
 const dummyUser = {
     name: "Admin Kopi Ilang Arah",
     email: "admin@ilangarah.test",
-    password: "ilangarah123",
+   password: process.env.TEST_PASSWORD,
     role: "admin"
 };
 
