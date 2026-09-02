@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '../.env' });
 const http = require('http');
 
 function req(method, path, token, body) {

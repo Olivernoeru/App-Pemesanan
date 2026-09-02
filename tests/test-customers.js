@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '../.env' });
 const API = 'http://localhost:5000/api';
 
 async function test() {

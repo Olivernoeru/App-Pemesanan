@@ -1,3 +1,4 @@
+require('dotenv').config({ path: '../.env' });
 const fs = require('fs');
 
 const API_AUTH = 'http://localhost:5000/api/auth';
